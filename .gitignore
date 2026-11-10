@@ -1,0 +1,18 @@
+# Secret keys
+.env
+.env.*
+server/.env
+client/.env
+
+# Dependencies
+node_modules/
+server/node_modules/
+client/node_modules/
+
+# Uploaded files
+server/uploads/
+
+# Build and logs
+dist/
+*.log
+.DS_Store

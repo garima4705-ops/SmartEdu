@@ -1,4 +1,4 @@
-export const BASE_URL = "http://localhost:8000";
+export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export const API_PATHS = {
   AUTH: {
@@ -26,7 +26,7 @@ export const API_PATHS = {
     GET_CHAT_HISTORY: (documentId) => `/api/ai/chat-history/${documentId}`,
   },
 
-    FLASHCARDS: {
+  FLASHCARDS: {
     GET_ALL_FLASHCARD_SETS: "/api/flashcards",
     GET_FLASHCARDS_FOR_DOC: (documentId) => `/api/flashcards/${documentId}`,
     REVIEW_FLASHCARD: (cardId) => `/api/flashcards/${cardId}/review`,
@@ -46,4 +46,3 @@ export const API_PATHS = {
     GET_DASHBOARD: "/api/progress/dashboard",
   },
 };
-

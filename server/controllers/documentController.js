@@ -14,10 +14,9 @@ export const uploadDocument = async (req, res, next) => {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'Please upload a PDF file', statusCode: 400 });
     }
-    
+
     const { title } = req.body;
 
-    
     if (!title) {
       // Clean up the uploaded file from server if title validation fails
       await fs.unlink(req.file.path);
@@ -25,7 +24,9 @@ export const uploadDocument = async (req, res, next) => {
     }
 
     // Construct the URL for the uploaded file
-    const baseUrl = `http://localhost:${process.env.PORT || 8000}`;
+    // On Render, SERVER_URL is set to the live backend address.
+    // On your own computer it is not set, so localhost is used.
+    const baseUrl = process.env.SERVER_URL || `http://localhost:${process.env.PORT || 8000}`;
     const fileUrl = `${baseUrl}/uploads/documents/${req.file.filename}`;
 
     // Create initial document record with 'processing' status
@@ -87,54 +88,54 @@ const processPDF = async (documentId, filePath) => {
 // @route   GET /api/documents
 // @access  Private
 export const getDocuments = async (req, res, next) => {
-    try {
-        const documents = await Document.aggregate([
-            {
-                $match: { userId: new mongoose.Types.ObjectId(req.user._id) }
-            },
-            {
-                $lookup: {
-                    from: 'flashcards',
-                    localField: '_id',
-                    foreignField: 'documentId',
-                    as: 'flashcardSets'
-                }
-            },
-            {
-                $lookup: {
-                    from: 'quizzes',
-                    localField: '_id',
-                    foreignField: 'documentId',
-                    as: 'quizzes'
-                }
-            },
-            {
-                $addFields: {
-                    flashcardCount: { $size: '$flashcardSets' },
-                    quizCount: { $size: '$quizzes' }
-                }
-            },
-            {
-                $project: {
-                    extractedText: 0,
-                    chunks: 0,
-                    flashcardSets: 0,
-                    quizzes: 0
-                }
-            },
-            {
-                $sort: { uploadDate: -1 }
-            }
-        ]);
+  try {
+    const documents = await Document.aggregate([
+      {
+        $match: { userId: new mongoose.Types.ObjectId(req.user._id) }
+      },
+      {
+        $lookup: {
+          from: 'flashcards',
+          localField: '_id',
+          foreignField: 'documentId',
+          as: 'flashcardSets'
+        }
+      },
+      {
+        $lookup: {
+          from: 'quizzes',
+          localField: '_id',
+          foreignField: 'documentId',
+          as: 'quizzes'
+        }
+      },
+      {
+        $addFields: {
+          flashcardCount: { $size: '$flashcardSets' },
+          quizCount: { $size: '$quizzes' }
+        }
+      },
+      {
+        $project: {
+          extractedText: 0,
+          chunks: 0,
+          flashcardSets: 0,
+          quizzes: 0
+        }
+      },
+      {
+        $sort: { uploadDate: -1 }
+      }
+    ]);
 
-        res.status(200).json({
-            success: true,
-            count: documents.length,
-            data: documents
-        });
-    } catch (error) {
-        next(error);
-    }
+    res.status(200).json({
+      success: true,
+      count: documents.length,
+      data: documents
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 // @desc    Get single document with chunks
@@ -143,36 +144,36 @@ export const getDocuments = async (req, res, next) => {
 export const getDocument = async (req, res, next) => {
   try {
     const document = await Document.findOne({
-    _id: req.params.id,
-    userId: req.user._id
-});
+      _id: req.params.id,
+      userId: req.user._id
+    });
 
-if (!document) {
-    return res.status(404).json({
+    if (!document) {
+      return res.status(404).json({
         success: false,
         error: 'Document not found',
         statusCode: 404
+      });
+    }
+
+    // Get counts of associated flashcards and quizzes
+    const flashcardCount = await Flashcard.countDocuments({ documentId: document._id, userId: req.user._id });
+    const quizCount = await Quiz.countDocuments({ documentId: document._id, userId: req.user._id });
+
+    // Update last accessed
+    document.lastAccessed = Date.now();
+    await document.save();
+
+    // Combine document data with counts
+    const documentData = document.toObject();
+    documentData.flashcardCount = flashcardCount;
+    documentData.quizCount = quizCount;
+
+    res.status(200).json({
+      success: true,
+      data: documentData
     });
-}
-
-// Get counts of associated flashcards and quizzes
-const flashcardCount = await Flashcard.countDocuments({ documentId: document._id, userId: req.user._id });
-const quizCount = await Quiz.countDocuments({ documentId: document._id, userId: req.user._id });
-
-// Update last accessed
-document.lastAccessed = Date.now();
-await document.save();
-
-// Combine document data with counts
-const documentData = document.toObject();
-documentData.flashcardCount = flashcardCount;
-documentData.quizCount = quizCount;
-
-res.status(200).json({
-    success: true,
-    data: documentData
-});
-} catch (error) {
+  } catch (error) {
     next(error);
   }
 };
@@ -180,39 +181,32 @@ res.status(200).json({
 // @desc    Delete document and its related resources
 // @route   DELETE /api/documents/:id
 // @access  Private
-
 export const deleteDocument = async (req, res, next) => {
-    try {
-        const document = await Document.findOne({
-            _id: req.params.id,
-            userId: req.user._id
-        });
+  try {
+    const document = await Document.findOne({
+      _id: req.params.id,
+      userId: req.user._id
+    });
 
-        if (!document) {
-            return res.status(404).json({
-                success: false,
-                error: 'Document not found',
-                statusCode: 404
-            });
-        }
-
-        // Delete file from filesystem
-                await fs.unlink(document.filePath).catch(() => {});
-
-        // Delete document
-        await document.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            message: 'Document deleted successfully'
-        });
-
-    } catch (error) {
-        next(error);
+    if (!document) {
+      return res.status(404).json({
+        success: false,
+        error: 'Document not found',
+        statusCode: 404
+      });
     }
+
+    // Delete file from filesystem
+    await fs.unlink(document.filePath).catch(() => {});
+
+    // Delete document
+    await document.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: 'Document deleted successfully'
+    });
+  } catch (error) {
+    next(error);
+  }
 };
-
- 
-
-    
-
